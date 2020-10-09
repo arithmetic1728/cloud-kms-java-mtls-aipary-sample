@@ -8,36 +8,90 @@ import com.google.api.services.cloudkms.v1.CloudKMS;
 import com.google.api.services.cloudkms.v1.CloudKMS.Projects.Locations.KeyRings;
 import com.google.api.services.cloudkms.v1.model.ListKeyRingsResponse;
 import com.google.api.services.cloudkms.v1.CloudKMSScopes;
+import com.google.api.client.googleapis.GoogleUtils;
 import com.google.auth.http.HttpCredentialsAdapter;
+import com.google.auth.oauth2.AccessToken;
 import com.google.auth.oauth2.GoogleCredentials;
-import java.io.IOException;
+import com.google.auth.oauth2.UserCredentials;
+
+import org.bouncycastle.asn1.pkcs.PrivateKeyInfo;
+import org.bouncycastle.jce.provider.BouncyCastleProvider;
+import org.bouncycastle.openssl.PEMParser;
+import org.bouncycastle.openssl.jcajce.JcaPEMKeyConverter;
+
+import java.io.ByteArrayInputStream;
+import java.io.File;
+import java.io.StringReader;
+import java.nio.file.Files;
+import java.security.KeyStore;
+import java.security.PrivateKey;
+import java.security.Security;
+import java.security.cert.CertificateFactory;
+import java.security.cert.X509Certificate;
+import java.text.SimpleDateFormat;
 import java.util.Collections;
+import java.util.Date;
 
 public class App {
-  private static final JsonFactory JSON_FACTORY = new JacksonFactory();
-  private static final NetHttpTransport HTTP_TRANSPORT = new NetHttpTransport();
+  private static KeyStore getKeystore() throws Exception {
+    Security.addProvider(new BouncyCastleProvider());
+    String delimiter = "-----END CERTIFICATE-----"; 
+    File file = new File("/usr/local/google/home/sijunliu/wks/java_client/cloud-kms-java-mtls-aipary-sample/my-app/my.pem");
+    byte[] certAndKey = Files.readAllBytes(file.toPath());
+    String[] tokens = new String(certAndKey).split(delimiter); 
+    byte[] certBytes = tokens[0].concat(delimiter).getBytes(); 
+    byte[] keyBytes = tokens[1].getBytes(); 
+ 
+    CertificateFactory fact = CertificateFactory.getInstance("X.509");
+    X509Certificate cert = (X509Certificate) fact.generateCertificate(new ByteArrayInputStream(certBytes));
 
-  private static CloudKMS createClient() throws IOException {
+    PEMParser pem = new PEMParser(new StringReader(new String(keyBytes)));
+    PrivateKey key = new JcaPEMKeyConverter().getPrivateKey((PrivateKeyInfo) pem.readObject()); 
+
+    KeyStore keystore = KeyStore.getInstance("JKS"); 
+    keystore.load(null); 
+    keystore.setCertificateEntry("cert-alias", cert); 
+    keystore.setKeyEntry("alias", key, new char[]{}, new X509Certificate[] {cert});
+    return keystore;
+  }
+
+  private static final JsonFactory JSON_FACTORY = new JacksonFactory();
+
+  private static CloudKMS createClient() throws Exception {
+    NetHttpTransport HTTP_TRANSPORT = 
+    new NetHttpTransport.Builder().trustCertificates(GoogleUtils.getCertificateTrustStore(), getKeystore())
+        .build();
     // Use Application Default Credentials (ADC) to authenticate the requests
     // For more information see https://cloud.google.com/docs/authentication/production
+    SimpleDateFormat dateformat3 = new SimpleDateFormat("dd/MM/yyyy");
+    String token_str = "";
+    AccessToken token = new AccessToken(token_str, dateformat3.parse("27/09/2032"));
+    UserCredentials creds = UserCredentials.newBuilder()
+    .setClientId("clientId")
+    .setClientSecret("clientSecret")
+    .setRefreshToken("refreshToken")
+    .setAccessToken(token)
+    .build();
+    
     GoogleCredentials credential =
         GoogleCredentials.getApplicationDefault().createScoped(Collections.singleton(CloudKMSScopes.CLOUD_PLATFORM));
 
     // Create a HttpRequestInitializer, which will provide a baseline configuration to all requests.
     HttpRequestInitializer requestInitializer =
         request -> {
-          new HttpCredentialsAdapter(credential).initialize(request);
+          new HttpCredentialsAdapter(creds).initialize(request);
           request.setConnectTimeout(60000); // 1 minute connect timeout
           request.setReadTimeout(60000); // 1 minute read timeout
         };
 
     // Build the client for interacting with the service.
     return new CloudKMS.Builder(HTTP_TRANSPORT, JSON_FACTORY, requestInitializer)
+        .setRootUrl("https://cloudkms.mtls.googleapis.com/")
         .setApplicationName("your-application-name")
         .build();
   }
 
-  public static void KeyringList(String projectId, String regionId) throws IOException {
+  public static void KeyringList(String projectId, String regionId) throws Exception {
     // Initialize the client, which will be used to interact with the service.
     CloudKMS client = createClient();
 
@@ -47,7 +101,7 @@ public class App {
     do {
       // Create request and configure any parameters.
       KeyRings.List request =
-          client.projects().locations().keyRings().list("projects/study-auth-265119/locations/global")
+          client.projects().locations().keyRings().list("projects/dcatest-281318/locations/global")
               .setPageSize(100) // Specify pageSize up to 1000
               .setPageToken(pageToken);
 
@@ -62,8 +116,9 @@ public class App {
 
   }
 
-  public static void main(String[] args) throws IOException {
-    App.KeyringList("study-auth-265119", "us-central1");
+  public static void main(String[] args) throws Exception {
+    String project = "dcatest-281318";
+    App.KeyringList(project, "us-central1");
     System.out.println("This will be printed");
   }
 }

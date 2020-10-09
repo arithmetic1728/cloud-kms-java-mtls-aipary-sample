@@ -14,8 +14,8 @@
 
   <properties>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-    <maven.compiler.source>1.11</maven.compiler.source>
-    <maven.compiler.target>1.11</maven.compiler.target>
+    <maven.compiler.source>11</maven.compiler.source>
+    <maven.compiler.target>11</maven.compiler.target>
   </properties>
 
   <dependencyManagement>
@@ -32,14 +32,30 @@
 
   <dependencies>
     <dependency>
-      <groupId>com.google.apis</groupId>
-      <artifactId>google-api-services-cloudkms</artifactId>
-      <version>v1-rev20200903-1.30.10</version>
+      <groupId>org.bouncycastle</groupId>
+      <artifactId>bcpkix-jdk15on</artifactId>
+      <version>1.58</version>
+    </dependency>
+    <dependency>
+      <groupId>com.google.http-client</groupId>
+      <artifactId>google-http-client</artifactId>
+      <version>1.36.1-SNAPSHOT</version>
+      <!-- <scope>system</scope>
+      <systemPath>/usr/local/google/home/sijunliu/wks/java_client/google-http-java-client/google-http-client/target/google-http-client-1.36.1-SNAPSHOT.jar</systemPath> -->
     </dependency>
     <dependency>
       <groupId>com.google.api-client</groupId>
       <artifactId>google-api-client</artifactId>
-      <version>1.30.10</version>
+      <version>1.30.11-SNAPSHOT</version>
+      <!-- <scope>system</scope>
+      <systemPath>/usr/local/google/home/sijunliu/wks/java_client/google-http-java-client/google-http-client/target/google-http-client-1.36.1-SNAPSHOT.jar</systemPath> -->
+    </dependency>
+    <dependency>
+      <groupId>com.google.apis</groupId>
+      <artifactId>google-api-services-cloudkms</artifactId>
+      <version>1.30.10-SNAPSHOT</version>
+      <scope>system</scope>
+      <systemPath>/usr/local/google/home/sijunliu/wks/java_client/google-api-java-client-services/clients/google-api-services-cloudkms/v1/1.30.1/target/google-api-services-cloudkms-1.30.10-SNAPSHOT.jar</systemPath>
     </dependency>
     <dependency>
       <groupId>com.google.auth</groupId>
