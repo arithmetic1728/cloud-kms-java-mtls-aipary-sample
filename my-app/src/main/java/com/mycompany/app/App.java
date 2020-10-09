@@ -18,6 +18,9 @@ import org.bouncycastle.asn1.pkcs.PrivateKeyInfo;
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
 import org.bouncycastle.openssl.PEMParser;
 import org.bouncycastle.openssl.jcajce.JcaPEMKeyConverter;
+import org.bouncycastle.openssl.jcajce.JceOpenSSLPKCS8DecryptorProviderBuilder;
+import org.bouncycastle.operator.InputDecryptorProvider;
+import org.bouncycastle.pkcs.PKCS8EncryptedPrivateKeyInfo;
 
 import java.io.ByteArrayInputStream;
 import java.io.File;
@@ -30,28 +33,48 @@ import java.security.cert.CertificateFactory;
 import java.security.cert.X509Certificate;
 import java.text.SimpleDateFormat;
 import java.util.Collections;
-import java.util.Date;
 
 public class App {
   private static KeyStore getKeystore() throws Exception {
+    // /opt/google/endpoint-verification/bin/apihelper --print_certificate
+    // /opt/google/endpoint-verification/bin/apihelper --print_certificate --with_passphrase
+    
+    // String pem_path = "unencrypted.pem";
+    // String passphrase = "";
+
+    String pem_path = "encrypted.pem";
+    String passphrase = "";
+
     Security.addProvider(new BouncyCastleProvider());
     String delimiter = "-----END CERTIFICATE-----"; 
-    File file = new File("/usr/local/google/home/sijunliu/wks/java_client/cloud-kms-java-mtls-aipary-sample/my-app/my.pem");
+    File file = new File("/usr/local/google/home/sijunliu/wks/java_client/cloud-kms-java-mtls-aipary-sample/my-app/" + pem_path);
     byte[] certAndKey = Files.readAllBytes(file.toPath());
     String[] tokens = new String(certAndKey).split(delimiter); 
     byte[] certBytes = tokens[0].concat(delimiter).getBytes(); 
     byte[] keyBytes = tokens[1].getBytes(); 
  
     CertificateFactory fact = CertificateFactory.getInstance("X.509");
-    X509Certificate cert = (X509Certificate) fact.generateCertificate(new ByteArrayInputStream(certBytes));
-
-    PEMParser pem = new PEMParser(new StringReader(new String(keyBytes)));
-    PrivateKey key = new JcaPEMKeyConverter().getPrivateKey((PrivateKeyInfo) pem.readObject()); 
+    X509Certificate cert = (X509Certificate) fact.generateCertificate(new ByteArrayInputStream(certBytes)); 
 
     KeyStore keystore = KeyStore.getInstance("JKS"); 
     keystore.load(null); 
     keystore.setCertificateEntry("cert-alias", cert); 
-    keystore.setKeyEntry("alias", key, new char[]{}, new X509Certificate[] {cert});
+
+    PEMParser pem = new PEMParser(new StringReader(new String(keyBytes)));
+    Object pk = pem.readObject();
+    System.out.printf("pem type is %s", pk.getClass().getName());
+
+    if (pk instanceof PrivateKeyInfo) {
+      PrivateKey key = new JcaPEMKeyConverter().getPrivateKey((PrivateKeyInfo) pk);
+      keystore.setKeyEntry("alias", key, new char[]{}, new X509Certificate[] {cert});
+    } else {
+      // decrypt and convert key
+      InputDecryptorProvider decryptionProv = new JceOpenSSLPKCS8DecryptorProviderBuilder().build(passphrase.toCharArray());
+      PrivateKeyInfo keyInfo = ((PKCS8EncryptedPrivateKeyInfo)pk).decryptPrivateKeyInfo(decryptionProv);
+      PrivateKey key = new JcaPEMKeyConverter().getPrivateKey(keyInfo);
+      keystore.setKeyEntry("alias", key, new char[]{}, new X509Certificate[] {cert});
+    }
+
     return keystore;
   }
 
@@ -73,8 +96,8 @@ public class App {
     .setAccessToken(token)
     .build();
     
-    GoogleCredentials credential =
-        GoogleCredentials.getApplicationDefault().createScoped(Collections.singleton(CloudKMSScopes.CLOUD_PLATFORM));
+    // GoogleCredentials credential =
+    //     GoogleCredentials.getApplicationDefault().createScoped(Collections.singleton(CloudKMSScopes.CLOUD_PLATFORM));
 
     // Create a HttpRequestInitializer, which will provide a baseline configuration to all requests.
     HttpRequestInitializer requestInitializer =
