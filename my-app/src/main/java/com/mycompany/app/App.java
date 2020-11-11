@@ -4,6 +4,8 @@ import com.google.api.client.http.HttpRequestInitializer;
 import com.google.api.client.http.javanet.NetHttpTransport;
 import com.google.api.client.json.JsonFactory;
 import com.google.api.client.json.jackson2.JacksonFactory;
+import com.google.api.client.util.PemReader;
+import com.google.api.client.util.SecurityUtils;
 import com.google.api.services.cloudkms.v1.CloudKMS;
 import com.google.api.services.cloudkms.v1.CloudKMS.Projects.Locations.KeyRings;
 import com.google.api.services.cloudkms.v1.model.ListKeyRingsResponse;
@@ -24,17 +26,77 @@ import org.bouncycastle.pkcs.PKCS8EncryptedPrivateKeyInfo;
 
 import java.io.ByteArrayInputStream;
 import java.io.File;
+import java.io.FileInputStream;
+import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.io.StringReader;
 import java.nio.file.Files;
+import java.security.KeyFactory;
 import java.security.KeyStore;
 import java.security.PrivateKey;
 import java.security.Security;
 import java.security.cert.CertificateFactory;
 import java.security.cert.X509Certificate;
+import java.security.spec.PKCS8EncodedKeySpec;
 import java.text.SimpleDateFormat;
-import java.util.Collections;
+import java.util.Base64;
 
 public class App {
+  private static KeyStore getKeyStoreSecurityUtil() throws Exception {
+    File file = new File(
+        "/usr/local/google/home/sijunliu/wks/java_client/cloud-kms-java-mtls-aipary-sample/my-app/unencrypted.pem");
+    String certAndKey = new String(Files.readAllBytes(file.toPath()));
+    KeyStore store = SecurityUtils.createMtlsKeyStore(certAndKey);
+    return store;
+  }
+
+  private static KeyStore getKeyStorePemReader() throws Exception {
+    KeyStore keystore = KeyStore.getInstance("JKS");
+    keystore.load(null);
+
+    File file = new File(
+        "/usr/local/google/home/sijunliu/wks/java_client/cloud-kms-java-mtls-aipary-sample/my-app/unencrypted.pem");
+    InputStream stream = new FileInputStream(file);
+
+    PemReader.Section section = PemReader.readFirstSectionAndClose(new InputStreamReader(stream), "CERTIFICATE");
+    CertificateFactory fact = CertificateFactory.getInstance("X.509");
+    X509Certificate cert = (X509Certificate) fact
+        .generateCertificate(new ByteArrayInputStream(section.getBase64DecodedBytes()));
+
+    stream = new FileInputStream(file);
+    section = PemReader.readFirstSectionAndClose(new InputStreamReader(stream), "PRIVATE KEY");
+    PKCS8EncodedKeySpec keySpecPKCS8 = new PKCS8EncodedKeySpec(section.getBase64DecodedBytes());
+    PrivateKey key = KeyFactory.getInstance(cert.getPublicKey().getAlgorithm()).generatePrivate(keySpecPKCS8);
+
+    keystore.setKeyEntry("alias", key, new char[] {}, new X509Certificate[] { cert });
+
+    return keystore;
+  }
+
+  private static KeyStore getKeyStoreJava() throws Exception {
+    String pem_path = "unencrypted.pem";
+    String delimiter = "-----END CERTIFICATE-----";
+    File file = new File(
+        "/usr/local/google/home/sijunliu/wks/java_client/cloud-kms-java-mtls-aipary-sample/my-app/" + pem_path);
+    byte[] certAndKey = Files.readAllBytes(file.toPath());
+    String[] tokens = new String(certAndKey).split(delimiter);
+    byte[] certBytes = tokens[0].concat(delimiter).getBytes();
+    String keyString = tokens[1];
+
+    KeyStore keystore = KeyStore.getInstance("JKS");
+    keystore.load(null);
+
+    CertificateFactory fact = CertificateFactory.getInstance("X.509");
+    X509Certificate cert = (X509Certificate) fact.generateCertificate(new ByteArrayInputStream(certBytes));
+
+    keyString = keyString.replaceAll("\\n", "").replace("-----BEGIN PRIVATE KEY-----", "")
+        .replace("-----END PRIVATE KEY-----", "");
+    PKCS8EncodedKeySpec keySpecPKCS8 = new PKCS8EncodedKeySpec(Base64.getDecoder().decode(keyString));
+    PrivateKey key = KeyFactory.getInstance(cert.getPublicKey().getAlgorithm()).generatePrivate(keySpecPKCS8);
+    keystore.setKeyEntry("alias", key, new char[] {}, new X509Certificate[] { cert });
+
+    return keystore;
+  }
   private static KeyStore getKeystore() throws Exception {
     // /opt/google/endpoint-verification/bin/apihelper --print_certificate
     // /opt/google/endpoint-verification/bin/apihelper --print_certificate --with_passphrase
@@ -43,7 +105,7 @@ public class App {
     // String passphrase = "";
 
     String pem_path = "encrypted.pem";
-    String passphrase = "";
+    String passphrase = "p0RUpHSTxAvlZMHmdsaSxA";
 
     Security.addProvider(new BouncyCastleProvider());
     String delimiter = "-----END CERTIFICATE-----"; 
@@ -58,6 +120,7 @@ public class App {
 
     KeyStore keystore = KeyStore.getInstance("JKS"); 
     keystore.load(null); 
+
     keystore.setCertificateEntry("cert-alias", cert); 
 
     PEMParser pem = new PEMParser(new StringReader(new String(keyBytes)));
@@ -78,16 +141,43 @@ public class App {
     return keystore;
   }
 
+  private static KeyStore loadKey() throws Exception {
+    File initialFile = new File("./keyStore.p12");
+    InputStream targetStream = new FileInputStream(initialFile);
+    KeyStore keyStore = KeyStore.getInstance("PKCS12");
+
+    // Load client certificate and private key from secret.p12 file.
+    keyStore.load(targetStream, "12345".toCharArray());
+
+    return keyStore;
+  }
+
   private static final JsonFactory JSON_FACTORY = new JacksonFactory();
 
   private static CloudKMS createClient() throws Exception {
+    String token_str = "";
+
     NetHttpTransport HTTP_TRANSPORT = 
-    new NetHttpTransport.Builder().trustCertificates(GoogleUtils.getCertificateTrustStore(), getKeystore())
+        new NetHttpTransport.Builder()
+            .trustCertificates(GoogleUtils.getCertificateTrustStore(), getKeyStoreSecurityUtil(), "")
         .build();
+
+    // NetHttpTransport HTTP_TRANSPORT =
+    // new
+    // NetHttpTransport.Builder().trustCertificates(GoogleUtils.getCertificateTrustStore(),
+    // getKeystore(), "")
+    // .build();
+
+    // NetHttpTransport HTTP_TRANSPORT =
+    // new
+    // NetHttpTransport.Builder().trustCertificates(GoogleUtils.getCertificateTrustStore(),
+    // loadKey(), "12345")
+    // .build();
+
+    System.out.printf("is mtls %s", HTTP_TRANSPORT.isMtls());
     // Use Application Default Credentials (ADC) to authenticate the requests
     // For more information see https://cloud.google.com/docs/authentication/production
     SimpleDateFormat dateformat3 = new SimpleDateFormat("dd/MM/yyyy");
-    String token_str = "";
     AccessToken token = new AccessToken(token_str, dateformat3.parse("27/09/2032"));
     UserCredentials creds = UserCredentials.newBuilder()
     .setClientId("clientId")
