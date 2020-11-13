@@ -18,10 +18,7 @@ import com.google.api.client.googleapis.javanet.GoogleNetHttpTransport;
 public class App {
   private static CloudKMS createClient() throws GeneralSecurityException, IOException {
     NetHttpTransport HTTP_TRANSPORT = GoogleNetHttpTransport.newTrustedTransport();
-    
-    // Need to
-    // export
-    // GOOGLE_APPLICATION_CREDENTIALS=/usr/local/google/home/sijunliu/wks/creds/mtls_user_cred.json
+
     GoogleCredentials credential = GoogleCredentials.getApplicationDefault()
         .createScoped(Collections.singleton(CloudKMSScopes.CLOUD_PLATFORM));
 
@@ -48,7 +45,7 @@ public class App {
     do {
       // Create request and configure any parameters.
       KeyRings.List request =
-          client.projects().locations().keyRings().list("projects/dcatest-281318/locations/global")
+          client.projects().locations().keyRings().list("projects/shinfan-mtls-demo/locations/global")
               .setPageSize(100) // Specify pageSize up to 1000
               .setPageToken(pageToken);
 
@@ -63,7 +60,7 @@ public class App {
   }
 
   public static void main(String[] args) throws Exception {
-    String project = "dcatest-281318";
+    String project = "shinfan-mtls-demo";
     App.KeyringList(project, "us-central1");
   }
 }
